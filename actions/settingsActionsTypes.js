@@ -1,0 +1,3 @@
+// Define action types
+export const SET_CALCULATION_METHOD = 'SET_CALCULATION_METHOD';
+export const SET_JURISTIC_SETTING = 'SET_JURISTIC_SETTING';
