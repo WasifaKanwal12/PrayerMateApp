@@ -10,7 +10,7 @@ A React Native mobile application providing accurate daily prayer times based on
 ## Introduction
 Prayer Mate is a mobile application built with React Native that helps Muslims track prayer times based on their current location. The app provides accurate prayer times using the Aladhan API and allows users to customize calculation methods according to different Islamic schools of thought.
 
-[... rest of your content remains unchanged ...]
+
 
 ## Features
 - Real-time prayer times based on device location
