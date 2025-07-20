@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ImageBackground, Animated, Easing, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ImageBackground, Animated, Easing, Modal, TouchableOpacity, Alert } from 'react-native'; // Added Alert
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setLocation } from './actions/prayerActions';
@@ -9,6 +9,22 @@ const SplashScreen = ({ navigation }) => {
   const moveAnim = useRef(new Animated.Value(-500)).current; // Initial position off the screen
   const dispatch = useDispatch();
   const [showPopup, setShowPopup] = useState(false);
+
+  // --- TEMPORARY: Effect to clear AsyncStorage for debugging ---
+  // REMOVE THIS useEffect BLOCK AFTER YOU CONFIRM THE LOCATION IS FETCHED CORRECTLY
+  useEffect(() => {
+    const clearStorage = async () => {
+      try {
+        await AsyncStorage.removeItem('userLocation');
+        console.log("SplashScreen: Cleared 'userLocation' from AsyncStorage.");
+      } catch (e) {
+        console.error("SplashScreen: Failed to clear AsyncStorage:", e);
+      }
+    };
+    clearStorage();
+  }, []); // Runs once on mount
+  // --- END TEMPORARY BLOCK ---
+
 
   useEffect(() => {
     const animateText = () => {
@@ -29,54 +45,87 @@ const SplashScreen = ({ navigation }) => {
 
     animateText();
 
-    const fetchLocation = async () => {
+    const fetchAndNavigate = async () => {
       try {
+        let latitude;
+        let longitude;
+
+        // --- DEBUGGING STEP 1: Check what's in AsyncStorage ---
         const storedLocation = await AsyncStorage.getItem('userLocation');
         if (storedLocation) {
           const parsedLocation = JSON.parse(storedLocation);
-          dispatch(setLocation(parsedLocation));
-          setShowPopup(true);
-          setTimeout(() => {
-            setShowPopup(false);
-            navigation.navigate('Main', { screen: 'Home', params: { latitude: parsedLocation.latitude, longitude: parsedLocation.longitude } });
-          }, 2000); // Wait for 1 second before navigating
+          latitude = parsedLocation.latitude;
+          longitude = parsedLocation.longitude;
+          console.log("SplashScreen: Using stored location:", latitude, longitude); // <-- CHECK THIS LOG
         } else {
+          // Request permissions
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status !== 'granted') {
-            console.log('Permission to access location was denied');
-            return;
+            console.warn('SplashScreen: Permission to access location was denied. Using default coordinates.');
+            // Fallback to default coordinates if permission denied
+            // Using precise coordinates for Fateh Jang, Pakistan
+            latitude = 33.5506; // More precise latitude
+            longitude = 72.6406; // More precise longitude
+            Alert.alert(
+              "Location Permission Denied",
+              "Please grant location permission to get accurate prayer times. Using default location for now."
+            );
+          } else {
+            const options = {
+              accuracy: Location.Accuracy.High, // Request high accuracy
+            };
+            const currentLocation = await Location.getCurrentPositionAsync(options);
+            latitude = currentLocation.coords.latitude;
+            longitude = currentLocation.coords.longitude;
+            console.log("SplashScreen: Fetched current location from Expo:", latitude, longitude); // <-- CHECK THIS LOG
+            
+            // --- DEBUGGING STEP 2: Check what's being stored ---
+            await AsyncStorage.setItem('userLocation', JSON.stringify({ latitude, longitude }));
+            console.log("SplashScreen: Stored new location in AsyncStorage."); // <-- CONFIRM STORAGE
           }
-          const options = {
-            accuracy: Location.Accuracy.High,
-          };
-          const currentLocation = await Location.getCurrentPositionAsync(options);
-          const { latitude, longitude } = currentLocation.coords;
-          await AsyncStorage.setItem('userLocation', JSON.stringify({ latitude, longitude }));
-          dispatch(setLocation({ latitude, longitude }));
-          setShowPopup(true);
-          setTimeout(() => {
-            setShowPopup(false);
-            navigation.navigate('Main', { screen: 'Home', params: { latitude, longitude } });
-          }, 2000); // Wait for 1 second before navigating
         }
+
+        // Dispatch the location to Redux
+        dispatch(setLocation({ latitude, longitude }));
+
+        // Show popup and navigate
+        setShowPopup(true);
+        setTimeout(() => {
+          setShowPopup(false);
+          // --- DEBUGGING STEP 3: Check what's being passed to navigation ---
+          console.log("SplashScreen: Navigating with Lat:", latitude, "Long:", longitude); // <-- CHECK THIS LOG
+          navigation.navigate('Main', { screen: 'Home', params: { latitude, longitude } });
+        }, 2000); // Wait for 2 seconds before navigating
+
       } catch (error) {
-        console.error('Error fetching location:', error);
+        console.error('SplashScreen: Error fetching location or navigating:', error);
+        Alert.alert("Error", `Failed to get location: ${error.message}. Please try again.`);
+        // Fallback to default coordinates in case of any error during location fetching
+        navigation.navigate('Main', { screen: 'Home', params: { latitude: 33.5506, longitude: 72.6406 } });
       }
     };
 
-    fetchLocation();
-  }, []);
+    // This useEffect should run after the temporary clearStorage useEffect
+    // to ensure location is always re-fetched or precise defaults are used.
+    // It's crucial that this fetchAndNavigate is called.
+    const navigationTimeout = setTimeout(() => {
+        fetchAndNavigate();
+    }, 100); // Small delay to ensure AsyncStorage clear has a chance to complete
+    
+    return () => clearTimeout(navigationTimeout); // Cleanup timeout
+
+  }, []); // Empty dependency array means this effect runs once on mount
 
   return (
     <View style={styles.container}>
-      <ImageBackground 
-        source={require('./assets/masjid3.jpg')} 
-        resizeMode="cover" 
+      <ImageBackground
+        source={require('./assets/masjid3.jpg')}
+        resizeMode="cover"
         style={styles.image}
       >
         <Text style={styles.title}>Prayer Mate</Text>
         <Animated.Text style={[styles.text, { transform: [{ translateX: moveAnim }] }]}>
-        "The first matter that the slave will be brought to account for on the Day of Judgment is the prayer..."
+          "The first matter that the slave will be brought to account for on the Day of Judgment is the prayer..."
         </Animated.Text>
         <Modal
           visible={showPopup}
